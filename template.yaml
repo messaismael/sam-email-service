@@ -1,17 +1,20 @@
 Transform: AWS::Serverless-2016-10-31
 Metadata:
   AWS::ServerlessRepo::Application:
-    Name: send-email-service
-    Description: A Scalable sending email service.
+    Name: sam-email-service
+    Description: A Serverless Scalable sending email service powered by SAM.
     Author: Ismael Messa
-    SpdxLicenseId: Apache-2.0
+    SpdxLicenseId: MIT
+    LicenseUrl: LICENSE.txt
     ReadmeUrl: README.md
     Labels:
       - email
       - sam
-    HomePageUrl: https://github.com/messaismael/scalable-send-email-service/tree/sam-template
+      - microservice
+      - typescript
+    HomePageUrl: https://github.com/messaismael/sam-email-service
     SemanticVersion: 0.0.1
-    SourceCodeUrl: https://github.com/messaismael/scalable-send-email-service/sam-template
+    SourceCodeUrl: https://github.com/messaismael/sam-email-service
 Resources:
   Api:
     Type: AWS::Serverless::Api
@@ -21,7 +24,7 @@ Resources:
         - ResourceName: Api
       StageName: Prod
       DefinitionBody:
-        openapi: '3.0'
+        openapi: "3.0"
         info: {}
         paths:
           /mail:
@@ -105,7 +108,7 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref EmailTable
         - SESCrudPolicy:
-            IdentityName: '*'
+            IdentityName: "*"
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
