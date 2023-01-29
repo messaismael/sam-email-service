@@ -1,0 +1,153 @@
+Transform: AWS::Serverless-2016-10-31
+Metadata:
+  AWS::ServerlessRepo::Application:
+    Name: send-email-service
+    Description: A Scalable sending email service.
+    Author: Ismael Messa
+    SpdxLicenseId: Apache-2.0
+    ReadmeUrl: README.md
+    Labels:
+      - email
+      - sam
+    HomePageUrl: https://github.com/messaismael/scalable-send-email-service/tree/sam-template
+    SemanticVersion: 0.0.1
+    SourceCodeUrl: https://github.com/messaismael/scalable-send-email-service/sam-template
+Resources:
+  Api:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub
+        - ${ResourceName} From Stack ${AWS::StackName}
+        - ResourceName: Api
+      StageName: Prod
+      DefinitionBody:
+        openapi: '3.0'
+        info: {}
+        paths:
+          /mail:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SendService.Arn}/invocations
+              responses: {}
+      EndpointConfiguration: REGIONAL
+      TracingEnabled: true
+  SendService:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Function ${ResourceName}
+        - ResourceName: SendService
+      CodeUri: functions/send_service
+      Handler: app.handler
+      Runtime: nodejs18.x
+      MemorySize: 3008
+      Timeout: 30
+      Tracing: Active
+      Events:
+        ApiPOSTmail:
+          Type: Api
+          Properties:
+            Path: /mail
+            Method: POST
+            RestApiId: !Ref Api
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref EmailTable
+          QUEUE_NAME: !GetAtt EmailQueue.QueueName
+          QUEUE_URL: !Ref EmailQueue
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref EmailTable
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt EmailQueue.QueueName
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - app.ts
+  SendServiceLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${SendService}
+  ReceiveService:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Function ${ResourceName}
+        - ResourceName: ReceiveService
+      CodeUri: functions/receive_service
+      Handler: app.handler
+      Runtime: nodejs18.x
+      MemorySize: 3008
+      Timeout: 30
+      Tracing: Active
+      Events:
+        EmailQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt EmailQueue.Arn
+            BatchSize: 1
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref EmailTable
+          QUEUE_NAME: !GetAtt EmailQueue.QueueName
+          QUEUE_URL: !Ref EmailQueue
+          TO_EMAILS: your_address_email
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt EmailQueue.QueueName
+        - DynamoDBCrudPolicy:
+            TableName: !Ref EmailTable
+        - SESCrudPolicy:
+            IdentityName: '*'
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - app.ts
+  ReceiveServiceLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ReceiveService}
+  EmailTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: messageId
+          AttributeType: S
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: messageId
+          KeyType: HASH
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+  EmailQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 345600
+Outputs:
+  SendServiceApi:
+    Description: API Gateway endpoint URL for Prod stage for Send Service function
+    Value: !Sub https://${Api}.execute-api.${AWS::Region}.amazonaws.com/Prod/mail/
+  SendServiceFunction:
+    Description: Send service Lambda Function ARN
+    Value: !GetAtt SendService.Arn
+  SendServiceFunctionIamRole:
+    Description: Implicit IAM Role created for Send service function
+    Value: !GetAtt SendServiceRole.Arn
+  ReceiveServiceFunction:
+    Description: Receive service Lambda Function ARN
+    Value: !GetAtt ReceiveService.Arn
+  ReceiveServiceunctionIamRole:
+    Description: Implicit IAM Role created for Receive Service function
+    Value: !GetAtt ReceiveServiceRole.Arn
